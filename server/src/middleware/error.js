@@ -14,7 +14,7 @@ export function errorHandler(err, _req, res, _next) {
 
   res.status(status).json({
     error: {
-      message: status === 500 && isProd ? 'Something went wrong on our side' : err.message,
+      message: err.message || 'Something went wrong on our side',
       details: err.details,
     },
   });
