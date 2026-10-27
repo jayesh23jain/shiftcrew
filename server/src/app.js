@@ -18,6 +18,11 @@ import notificationRoutes from './modules/notifications/notifications.routes.js'
 import communityRoutes from './modules/community/community.routes.js';
 import reportRoutes from './modules/reports/reports.routes.js';
 import adminRoutes from './modules/admin/admin.routes.js';
+import missionRoutes from './modules/mission/mission.routes.js';
+import swapRoutes from './modules/swaps/swaps.routes.js';
+import aiRoutes from './modules/ai/ai.routes.js';
+import assistantRoutes from './modules/assistant/assistant.routes.js';
+import { llmService } from './services/llm/index.js';
 
 export function createApp() {
   const app = express();
@@ -33,9 +38,13 @@ export function createApp() {
   app.use('/api', apiLimiter);
 
   app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+  app.get('/ai/status', (_req, res) => res.json(llmService.getAiStatus()));
+  app.use('/api/ai', aiRoutes);
+  app.use(['/api/assistant', '/assistant'], assistantRoutes);
   app.use('/api/auth', authRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/orgs', orgRoutes);
+  app.use('/api/events', missionRoutes);
   app.use('/api/events', eventRoutes);
   app.use('/api/attendance', attendanceRoutes);
   app.use('/api/wallet', walletRoutes);
@@ -44,6 +53,7 @@ export function createApp() {
   app.use('/api/admin', adminRoutes);
   // These routers declare their own full paths (/events/:id/shifts, /shifts/:id, /me/..., /certificates/...)
   app.use('/api', shiftRoutes);
+  app.use('/api', swapRoutes);
   app.use('/api', communityRoutes);
   app.use('/api', reportRoutes);
 

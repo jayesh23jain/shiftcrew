@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { errorMessage } from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -59,6 +59,12 @@ const CARD_HEADER_PALETTE = [
 export default function MyShifts() {
   const qc = useQueryClient();
   const { user } = useAuth();
+
+  // Organizers and admins manage events, they do not have crew shifts
+  if (user?.role === 'organizer' || user?.role === 'admin') {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   const { getDistance } = useUserLocation();
 
   const [activeTab, setActiveTab] = useState('all'); // all | confirmed | pending | completed | cancelled
@@ -66,6 +72,11 @@ export default function MyShifts() {
   const [disputing, setDisputing] = useState(null); // attendanceId
   const [disputeShiftInfo, setDisputeShiftInfo] = useState(null);
   const [reason, setReason] = useState('');
+
+  // Shift Swap states
+  const [swapModalShift, setSwapModalShift] = useState(null);
+  const [swapNote, setSwapNote] = useState('');
+  const [swapTargetEmail, setSwapTargetEmail] = useState('');
 
   const toggleMinimize = (id) => {
     setMinimizedShifts((prev) => {
@@ -119,6 +130,28 @@ export default function MyShifts() {
       setDisputeShiftInfo(null);
       setReason('');
       qc.invalidateQueries({ queryKey: ['my-shifts'] });
+    },
+  });
+
+  const offerSwapMutation = useMutation({
+    mutationFn: async ({ signupId, note, toUserEmail }) =>
+      (await api.post('/swaps/offer', { signupId, note, toUserEmail })).data,
+    onSuccess: () => {
+      setSwapModalShift(null);
+      qc.invalidateQueries({ queryKey: ['my-shifts'] });
+    },
+    onError: (err) => {
+      window.alert(errorMessage(err));
+    },
+  });
+
+  const cancelSwapMutation = useMutation({
+    mutationFn: async (swapId) => (await api.post(`/swaps/${swapId}/cancel`)).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my-shifts'] });
+    },
+    onError: (err) => {
+      window.alert(errorMessage(err));
     },
   });
 
@@ -912,7 +945,65 @@ export default function MyShifts() {
                     </a>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    {/* Shift Swap Action & Status */}
+                    {isConfirmed && !s.isCancelled && !s.isEventCancelled && !s.isPaid && (
+                      s.swap ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                          <span
+                            style={{
+                              fontSize: '0.74rem',
+                              fontWeight: 850,
+                              background: s.swap.status === 'claimed' ? '#fef08a' : '#e0e7ff',
+                              color: s.swap.status === 'claimed' ? '#854d0e' : '#3730a3',
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              border: '1.2px solid #0f172a',
+                            }}
+                          >
+                            {s.swap.status === 'claimed' ? '⏳ Swap Claimed (Pending)' : '🔄 Swap on Board'}
+                          </span>
+                          <Link
+                            to="/swap-board"
+                            style={{ fontSize: '0.74rem', color: '#ea580c', fontWeight: 800, textDecoration: 'underline' }}
+                          >
+                            View on Board ↗
+                          </Link>
+                          <button
+                            type="button"
+                            className="btn btn-quiet"
+                            style={{ fontSize: '0.74rem', color: '#dc2626' }}
+                            onClick={() => {
+                              if (window.confirm('Withdraw this shift from the swap board?')) {
+                                cancelSwapMutation.mutate(s.swap._id);
+                              }
+                            }}
+                            disabled={cancelSwapMutation.isPending}
+                          >
+                            Withdraw Swap
+                          </button>
+                        </div>
+                      ) : isUpcoming && shiftStart - Date.now() >= 2 * 60 * 60 * 1000 ? (
+                        <button
+                          type="button"
+                          className="btn btn-white"
+                          style={{
+                            padding: '0.35rem 0.75rem',
+                            fontSize: '0.76rem',
+                            fontWeight: 850,
+                            border: '1.5px solid #0f172a',
+                          }}
+                          onClick={() => {
+                            setSwapModalShift(s);
+                            setSwapNote('');
+                            setSwapTargetEmail('');
+                          }}
+                        >
+                          🔄 Offer for Swap
+                        </button>
+                      ) : null
+                    )}
+
                     {isUpcoming && isConfirmed && !s.isCancelled && !s.isEventCancelled && (
                       <button
                         type="button"
@@ -1001,6 +1092,145 @@ export default function MyShifts() {
             </div>
           )}
         </Empty>
+      )}
+
+      {/* Offer Shift for Swap Dialog Modal */}
+      {swapModalShift && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="swap-modal-title"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+            zIndex: 9999,
+          }}
+          onClick={() => setSwapModalShift(null)}
+        >
+          <div
+            style={{
+              background: '#ffffff',
+              border: '2.5px solid #0f172a',
+              borderRadius: '20px',
+              padding: '1.5rem',
+              maxWidth: '520px',
+              width: '100%',
+              boxShadow: '6px 6px 0px #0f172a',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 id="swap-modal-title" style={{ margin: 0, fontSize: '1.25rem', fontWeight: 950, color: '#0f172a' }}>
+                🔄 Offer Shift for Swap
+              </h3>
+              <button
+                type="button"
+                onClick={() => setSwapModalShift(null)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1.2rem',
+                  cursor: 'pointer',
+                  color: '#64748b',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ background: '#f8fafc', border: '1.5px solid #0f172a', borderRadius: '12px', padding: '0.85rem', marginBottom: '1rem' }}>
+              <div style={{ fontWeight: 900, color: '#0f172a', fontSize: '0.95rem' }}>
+                {swapModalShift.event?.title}
+              </div>
+              <div style={{ fontSize: '0.84rem', color: '#4338ca', fontWeight: 800, marginTop: '2px' }}>
+                🎯 Role: {swapModalShift.role}
+              </div>
+              <div style={{ fontSize: '0.82rem', color: '#475569', fontWeight: 650, marginTop: '2px' }}>
+                ⏰ {formatShift(swapModalShift.shift)}
+              </div>
+            </div>
+
+            <div style={{ background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: '10px', padding: '0.75rem', marginBottom: '1rem', fontSize: '0.82rem', color: '#1e40af', lineHeight: 1.4 }}>
+              💡 <strong>Zero Penalty Handover:</strong> Your shift will be listed on the event <strong>Swap Board</strong>. When another eligible volunteer claims it and the organizer approves, the spot transfers to them with <strong>zero reliability penalty</strong>, and your QR pass will be revoked.
+            </div>
+
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              offerSwapMutation.mutate({
+                signupId: swapModalShift._id,
+                note: swapNote,
+                toUserEmail: swapTargetEmail.trim() || undefined,
+              });
+            }}>
+              <div style={{ marginBottom: '0.85rem' }}>
+                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                  Reason / Note for Fellow Volunteers:
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="e.g. Exam conflict, transport issue, family event..."
+                  value={swapNote}
+                  onChange={(e) => setSwapNote(e.target.value)}
+                  style={{
+                    width: '100%',
+                    border: '1.5px solid #0f172a',
+                    borderRadius: '8px',
+                    padding: '8px 10px',
+                    fontSize: '0.86rem',
+                    boxSizing: 'border-box',
+                    fontFamily: 'inherit',
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 800, color: '#334155', marginBottom: '4px' }}>
+                  Direct Swap to Specific Volunteer (Optional):
+                </label>
+                <input
+                  type="email"
+                  placeholder="volunteer@example.com (leave blank for open board)"
+                  value={swapTargetEmail}
+                  onChange={(e) => setSwapTargetEmail(e.target.value)}
+                  style={{
+                    width: '100%',
+                    border: '1.5px solid #0f172a',
+                    borderRadius: '8px',
+                    padding: '8px 10px',
+                    fontSize: '0.86rem',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.65rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-white"
+                  onClick={() => setSwapModalShift(null)}
+                  style={{ border: '1.5px solid #0f172a' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={offerSwapMutation.isPending}
+                  style={{ fontWeight: 850 }}
+                >
+                  {offerSwapMutation.isPending ? 'Posting...' : '🚀 Post to Swap Board'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

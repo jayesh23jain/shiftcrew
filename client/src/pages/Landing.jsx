@@ -121,7 +121,7 @@ const Checks = ({ items }) => (
 );
 
 export default function Landing() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const primary = user
     ? <Link className="lp-btn lp-y" to="/dashboard">Go to dashboard<Icon name="check" size={20} /></Link>
     : <Link className="lp-btn lp-y" to="/register">Create an account<Icon name="check" size={20} /></Link>;
@@ -130,13 +130,28 @@ export default function Landing() {
     <div className="lp">
       <div className="lp-shapes" aria-hidden="true"><i className="a" /><i className="b" /><i className="c" /><i className="d" /></div>
       <div className="lp-wrap">
-        {!user && (
-          <nav className="lp-card lp-nav" aria-label="Main">
-            <Link to="/" className="lp-brand"><Logo size={42} />ShiftCrew</Link>
-            <div className="lp-links"><a href="#how">How it works</a><a href="#features">Features</a><a href="#roles">For crew and organizers</a><Link to="/verify">Verify a certificate</Link></div>
-            <div className="lp-nr"><Link className="lp-btn lp-sm" to="/login">Log in</Link><Link className="lp-btn lp-sm lp-y" to="/register">Sign up</Link></div>
-          </nav>
-        )}
+        <nav className="lp-card lp-nav" aria-label="Main">
+          <Link to="/" className="lp-brand"><Logo size={42} />ShiftCrew</Link>
+          <div className="lp-links">
+            <a href="#how">How it works</a>
+            <a href="#features">Features</a>
+            <a href="#roles">For crew &amp; organizers</a>
+            <Link to="/verify">Verify a certificate</Link>
+          </div>
+          <div className="lp-nr">
+            {user ? (
+              <>
+                <Link className="lp-btn lp-sm lp-y" to="/dashboard">Dashboard</Link>
+                <button type="button" className="lp-btn lp-sm lp-ghost" onClick={logout}>Log out</button>
+              </>
+            ) : (
+              <>
+                <Link className="lp-btn lp-sm" to="/login">Log in</Link>
+                <Link className="lp-btn lp-sm lp-y" to="/register">Sign up</Link>
+              </>
+            )}
+          </div>
+        </nav>
 
         <section className="lp-card lp-herobox">
           <Star color="#fde98a" size={34} className="s1" /><Star color="#d3c6f7" size={26} className="s2" /><Star color="#f9d6e2" size={30} className="s3" />

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { errorMessage } from '../../api/client.js';
 import { SHIFT_STATE, SIGNUP_LABEL, formatShift, payLabel, toIso } from '../../lib.js';
 import { Empty, Field, Notice, Pill, Spinner } from '../../components/ui.jsx';
+import PlanWithAiModal from './PlanWithAiModal.jsx';
 
 function getRoleIcon(name = '') {
   const n = name.toLowerCase();
@@ -35,6 +36,13 @@ export default function ShiftsTab({ event, roles }) {
   const [newCapacityVal, setNewCapacityVal] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [roleFilter, setRoleFilter] = useState('all');
+  const [showAiPlanModal, setShowAiPlanModal] = useState(false);
+
+  const { data: aiStatus } = useQuery({
+    queryKey: ['aiStatus'],
+    queryFn: async () => (await api.get('/ai/status')).data,
+    staleTime: 60000,
+  });
 
   const eventDateStr = getShiftDateStr(event.startDate || new Date());
 
@@ -59,7 +67,37 @@ export default function ShiftsTab({ event, roles }) {
     qc.invalidateQueries({ queryKey: ['shifts', event._id] });
     qc.invalidateQueries({ queryKey: ['roster'] });
     qc.invalidateQueries({ queryKey: ['organizer-summary'] });
+    qc.invalidateQueries({ queryKey: ['manage-swaps', event._id] });
   };
+
+  // Shift Swap Approvals Queue query
+  const { data: manageSwaps = [] } = useQuery({
+    queryKey: ['manage-swaps', event._id],
+    queryFn: async () => (await api.get(`/events/${event._id}/swaps/manage`)).data.swaps,
+    refetchInterval: 10_000,
+  });
+
+  const approveSwapMutation = useMutation({
+    mutationFn: async (swapId) => (await api.post(`/swaps/${swapId}/approve`)).data,
+    onSuccess: () => {
+      refresh();
+      window.alert('✓ Shift swap approved! Spot transferred to the new volunteer.');
+    },
+    onError: (err) => {
+      window.alert(errorMessage(err));
+    },
+  });
+
+  const rejectSwapMutation = useMutation({
+    mutationFn: async ({ swapId, reason }) =>
+      (await api.post(`/swaps/${swapId}/reject`, { reason })).data,
+    onSuccess: () => {
+      refresh();
+    },
+    onError: (err) => {
+      window.alert(errorMessage(err));
+    },
+  });
 
   const create = useMutation({
     mutationFn: async () =>
@@ -94,9 +132,28 @@ export default function ShiftsTab({ event, roles }) {
 
   if (!roles.length) {
     return (
-      <Empty title="Add a Crew Role First">
-        Shifts must be assigned to a volunteer role (e.g. Registration Desk or Stage AV). Go to the <strong>Overview</strong> tab to define your first role!
-      </Empty>
+      <div style={{ display: 'grid', gap: '1.25rem' }}>
+        <Empty title="Add a Crew Role First">
+          Shifts must be assigned to a volunteer role (e.g. Registration Desk or Stage AV). Go to the <strong>Overview</strong> tab to define your first role, or let AI draft roles and shifts for you!
+        </Empty>
+        {aiStatus?.enabled && (
+          <div style={{ textAlign: 'center' }}>
+            <button
+              type="button"
+              className="manage-action-btn manage-btn-primary"
+              style={{ padding: '0.65rem 1.35rem', fontSize: '0.92rem' }}
+              onClick={() => setShowAiPlanModal(true)}
+            >
+              ⚡ Plan Roles & Shifts with AI
+            </button>
+          </div>
+        )}
+        <PlanWithAiModal
+          event={event}
+          isOpen={showAiPlanModal}
+          onClose={() => setShowAiPlanModal(false)}
+        />
+      </div>
     );
   }
 
@@ -210,7 +267,165 @@ export default function ShiftsTab({ event, roles }) {
             </select>
           </div>
         )}
+
+        {aiStatus?.enabled && (
+          <button
+            type="button"
+            className="manage-action-btn"
+            style={{
+              padding: '0.35rem 0.75rem',
+              fontSize: '0.8rem',
+              background: '#e0e7ff',
+              color: '#3730a3',
+              border: '1.5px solid #0f172a',
+              boxShadow: '2px 2px 0px #0f172a',
+              fontWeight: 900,
+            }}
+            onClick={() => setShowAiPlanModal(true)}
+          >
+            ⚡ Plan with AI
+          </button>
+        )}
       </div>
+
+      {/* Shift Swap Approvals Queue for Organizers */}
+      {manageSwaps.length > 0 && (
+        <div
+          style={{
+            background: '#ffffff',
+            border: '2.5px solid #0f172a',
+            borderRadius: '16px',
+            padding: '1.25rem',
+            boxShadow: '4px 4px 0px #0f172a',
+            marginBottom: '1.5rem',
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '1.3rem' }}>🔄</span>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 950, color: '#0f172a' }}>
+                Shift Swap Approvals Queue
+              </h3>
+            </div>
+            <span
+              style={{
+                fontSize: '0.74rem',
+                fontWeight: 850,
+                background: manageSwaps.some((s) => s.status === 'claimed') ? '#fee2e2' : '#f1f5f9',
+                color: manageSwaps.some((s) => s.status === 'claimed') ? '#991b1b' : '#475569',
+                padding: '3px 9px',
+                borderRadius: '999px',
+                border: '1.2px solid #0f172a',
+              }}
+            >
+              {manageSwaps.filter((s) => s.status === 'claimed').length} Awaiting Approval
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+            {manageSwaps.map((sw) => {
+              const isClaimed = sw.status === 'claimed';
+              const isOpen = sw.status === 'open';
+              const isApproved = sw.status === 'approved';
+
+              return (
+                <div
+                  key={sw._id}
+                  style={{
+                    background: isClaimed ? '#fffbeb' : '#f8fafc',
+                    border: '1.5px solid #0f172a',
+                    borderRadius: '12px',
+                    padding: '0.95rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.6rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div style={{ fontWeight: 900, color: '#0f172a', fontSize: '0.92rem' }}>
+                      🎯 {sw.shiftRoleName} • {formatShift(sw.shiftId?.start, sw.shiftId?.end)}
+                    </div>
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 900,
+                        textTransform: 'uppercase',
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        border: '1px solid #0f172a',
+                        background: isClaimed ? '#fef08a' : isApproved ? '#bbf7d0' : isOpen ? '#bae6fd' : '#e2e8f0',
+                        color: '#0f172a',
+                      }}
+                    >
+                      {sw.status}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem', fontSize: '0.82rem' }}>
+                    <div style={{ background: '#ffffff', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 800 }}>ORIGINAL VOLUNTEER:</span>
+                      <div style={{ fontWeight: 850, color: '#0f172a' }}>{sw.fromUserId?.name || 'Volunteer'}</div>
+                      <div style={{ color: '#475569', fontSize: '0.76rem' }}>{sw.fromUserId?.email} • {sw.fromUserId?.phone || 'No phone'}</div>
+                      <div style={{ color: '#047857', fontWeight: 750, fontSize: '0.74rem' }}>⭐ {sw.fromUserId?.reliabilityScore ?? 100} Reliability</div>
+                    </div>
+
+                    <div style={{ background: '#ffffff', padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                      <span style={{ fontSize: '0.72rem', color: '#64748b', fontWeight: 800 }}>NEW TAKER / CLAIMANT:</span>
+                      {sw.claimedBy ? (
+                        <>
+                          <div style={{ fontWeight: 850, color: '#0f172a' }}>{sw.claimedBy?.name}</div>
+                          <div style={{ color: '#475569', fontSize: '0.76rem' }}>{sw.claimedBy?.email} • {sw.claimedBy?.phone || 'No phone'}</div>
+                          <div style={{ color: '#047857', fontWeight: 750, fontSize: '0.74rem' }}>⭐ {sw.claimedBy?.reliabilityScore ?? 100} Reliability</div>
+                        </>
+                      ) : (
+                        <div style={{ fontStyle: 'italic', color: '#94a3b8' }}>Waiting for a volunteer to claim...</div>
+                      )}
+                    </div>
+                  </div>
+
+                  {sw.note && (
+                    <div style={{ fontSize: '0.8rem', color: '#475569', fontStyle: 'italic' }}>
+                      Volunteer Note: "{sw.note}"
+                    </div>
+                  )}
+
+                  {isClaimed && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
+                      <button
+                        type="button"
+                        className="btn btn-white"
+                        style={{ border: '1.5px solid #0f172a', color: '#dc2626', fontSize: '0.78rem', padding: '4px 10px', fontWeight: 800 }}
+                        onClick={() => {
+                          const reason = window.prompt('Reason for declining this swap claim (optional):');
+                          if (reason !== null) {
+                            rejectSwapMutation.mutate({ swapId: sw._id, reason });
+                          }
+                        }}
+                        disabled={rejectSwapMutation.isPending}
+                      >
+                        ✕ Decline Claim
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{ fontSize: '0.78rem', padding: '4px 12px', fontWeight: 900 }}
+                        onClick={() => {
+                          if (window.confirm(`Approve swap transfer? ${sw.fromUserId?.name} will be removed with zero penalty and ${sw.claimedBy?.name} will be confirmed.`)) {
+                            approveSwapMutation.mutate(sw._id);
+                          }
+                        }}
+                        disabled={approveSwapMutation.isPending}
+                      >
+                        {approveSwapMutation.isPending ? 'Transferring...' : '✓ Approve Transfer'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Shifts List / Cards */}
       {filteredShifts.length > 0 ? (
@@ -514,6 +729,12 @@ export default function ShiftsTab({ event, roles }) {
           </div>
         </form>
       </div>
+
+      <PlanWithAiModal
+        event={event}
+        isOpen={showAiPlanModal}
+        onClose={() => setShowAiPlanModal(false)}
+      />
     </div>
   );
 }

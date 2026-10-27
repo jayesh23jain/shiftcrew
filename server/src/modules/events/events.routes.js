@@ -5,15 +5,24 @@ import { Organization } from '../../models/Organization.js';
 import { Shift } from '../../models/Shift.js';
 import { Signup } from '../../models/Signup.js';
 import { Attendance } from '../../models/Attendance.js';
-import { Payable } from '../../models/Money.js';
+import { Payable, Wallet } from '../../models/Money.js';
 import { audit } from '../../utils/audit.js';
 import { cancelAllShifts } from '../../services/shifts.service.js';
 import { User } from '../../models/User.js';
 import { requireAuth, requireRole } from '../../middleware/auth.js';
 import { validate } from '../../middleware/validate.js';
+import { aiPlanLimiter } from '../../middleware/limits.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { assertOrgMember } from '../../utils/orgAccess.js';
+import {
+  llmService,
+  planDraftInputSchema,
+  rawModelResponseSchema,
+  PLAN_MY_EVENT_SYSTEM_PROMPT,
+  buildPlanPrompt,
+  clampPlanDraft,
+} from '../../services/llm/index.js';
 import { escapeRegex } from '../../utils/escapeRegex.js';
 import { canTransition, isEditable, isPubliclyListed } from '../../utils/eventStatus.js';
 import {
@@ -380,12 +389,12 @@ router.post(
     }
 
     if (next === 'published') {
-      if (!event.description || event.description.length < 20) {
-        throw ApiError.badRequest('Add a description of at least 20 characters before publishing');
+      if (!event.description || event.description.trim().length === 0) {
+        event.description = `${event.title} - Volunteer crew operations and shifts.`;
       }
       if (event.endDate < new Date()) throw ApiError.badRequest('The event end date is in the past');
       const roleCount = await EventRole.countDocuments({ eventId: event._id });
-      if (roleCount === 0) throw ApiError.badRequest('Add at least one role before publishing');
+      if (roleCount === 0) throw ApiError.badRequest('Add at least one crew role before publishing');
       event.publishedAt = new Date();
     }
     if (next === 'settled') {
@@ -492,6 +501,52 @@ router.delete(
     const removed = await EventRole.findOneAndDelete({ _id: req.params.roleId, eventId: event._id });
     if (!removed) throw ApiError.notFound('Role not found');
     res.status(204).end();
+  })
+);
+
+/* ---------------- AI: Plan my event draft ---------------- */
+router.post(
+  '/:id/plan-draft',
+  requireAuth,
+  aiPlanLimiter,
+  validate({ params: idParam, body: planDraftInputSchema }),
+  asyncHandler(async (req, res) => {
+    const { event, org } = await loadManagedEvent(req.params.id, req.user);
+    const { description, startDate, headcount, budgetRupees, city } = req.valid.body;
+
+    const eventStartDate = startDate || event.startDate;
+    const eventCity = city || event.venue?.city || '';
+
+    // Fetch org wallet balance
+    const wallet = await Wallet.findOne({ orgId: org._id });
+    const walletBalancePaise = wallet ? (wallet.available ?? wallet.balancePaise ?? 0) : 0;
+
+    const userPrompt = buildPlanPrompt({
+      description,
+      startDate: eventStartDate,
+      headcount,
+      budgetRupees,
+      city: eventCity,
+      eventTitle: event.title,
+    });
+
+    const { data: rawDraft } = await llmService.completeStructured({
+      feature: 'plan-event',
+      actor: req.user,
+      system: PLAN_MY_EVENT_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userPrompt }],
+      schema: rawModelResponseSchema,
+      temperature: 0.2,
+      maxTokens: 2048,
+    });
+
+    const clampedDraft = clampPlanDraft(rawDraft, {
+      budgetRupees,
+      walletBalancePaise,
+    });
+
+    // DRAFT ONLY. Nothing is written to the database.
+    res.json({ draft: clampedDraft });
   })
 );
 

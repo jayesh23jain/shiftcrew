@@ -6,6 +6,7 @@ import { ApiError } from '../utils/ApiError.js';
 import { estimatePay } from '../utils/money.js';
 import { notify } from './notify.js';
 import { penalize } from '../utils/reliability.js';
+import { emitMissionUpdate } from '../socket.js';
 
 const fmt = (d) => new Date(d).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
 
@@ -25,7 +26,7 @@ const takeSpot = (shiftId) =>
 
 const freeSpot = (shiftId) => Shift.updateOne({ _id: shiftId }, { $inc: { spotsLeft: 1 } });
 
-async function claimSignup(shift, userId) {
+export async function claimSignup(shift, userId) {
   const fields = {
     eventId: shift.eventId, roleId: shift.roleId, orgId: shift.orgId,
     start: shift.start, end: shift.end, estPay: estimatePay(shift), joinedAt: new Date(),
@@ -73,6 +74,7 @@ export async function joinShift(shiftId, user, inviteCode) {
     }
     await Signup.updateOne({ _id: signup._id }, { $set: { status } });
     signup.status = status;
+    emitMissionUpdate(shift.eventId, { reason: 'join', details: { userId: user.id, status } });
     return signup;
   } catch (err) {
     if (tookSpot) await freeSpot(shift._id);
@@ -83,7 +85,7 @@ export async function joinShift(shiftId, user, inviteCode) {
 
 // Gives free spots to the oldest waitlisted people. Safe to call any time.
 export async function fillFromWaitlist(shiftId) {
-  for (;;) {
+  for (; ;) {
     const next = await Signup.findOne({ shiftId, status: 'waitlisted' }).sort({ joinedAt: 1 });
     if (!next) return;
     if (!(await takeSpot(shiftId))) return;
@@ -100,6 +102,7 @@ export async function fillFromWaitlist(shiftId) {
       body: `A spot opened up and you are now confirmed for ${shift?.roleId?.name || 'your shift'} on ${fmt(shift.start)}.`,
       link: '/my-shifts',
     });
+    emitMissionUpdate(shift?.eventId || next.eventId, { reason: 'waitlist_promoted', details: { userId: next.userId } });
   }
 }
 
@@ -134,6 +137,7 @@ export async function leaveSignup(signupId, { byOrganizer = false, reason } = {}
       body: `An organizer removed you from the shift on ${fmt(shift.start)}.${reason ? ` Reason: ${reason}` : ''}`, link: '/my-shifts',
     });
   }
+  emitMissionUpdate(shift.eventId, { reason: 'leave', details: { userId: flipped.userId } });
   return { ...flipped.toObject(), status: 'cancelled', lateCancel };
 }
 
@@ -149,6 +153,7 @@ export async function approveSignup(signupId) {
     body: got ? 'You are confirmed for the shift.' : 'The shift is full, so you have been placed on the waitlist.',
     link: '/my-shifts',
   });
+  emitMissionUpdate(claimed.eventId, { reason: 'signup_approved' });
   return status;
 }
 

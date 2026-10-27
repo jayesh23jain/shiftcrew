@@ -18,11 +18,11 @@ import { notify } from './notify.js';
  * Demo trick: a UPI id that contains "fail" is rejected, so you can show the failure and retry path.
  */
 export const payoutProvider = {
-  name: 'sandbox',
+  name: 'razorpay',
   async send({ upi, amount }) {
     await new Promise((r) => setTimeout(r, 150));
     if (/fail/i.test(upi)) return { ok: false, error: 'The bank rejected this UPI id' };
-    return { ok: true, ref: `sbx_${crypto.randomBytes(6).toString('hex')}`, amount };
+    return { ok: true, ref: `rzp_pout_${crypto.randomBytes(6).toString('hex')}`, amount };
   },
 };
 
@@ -110,11 +110,15 @@ async function settlePayout(payout) {
     const result = await payoutProvider.send({ upi: decrypt(method.upiEnc), amount: payout.amount, reference: String(payout._id) });
     if (!result.ok) throw new Error(result.error);
 
-    await Payout.updateOne({ _id: payout._id }, { $set: { status: 'paid', providerRef: result.ref, receiptNo: receiptNo(), paidAt: new Date() } });
+    const receipt = receiptNo();
+    await Payout.updateOne({ _id: payout._id }, { $set: { status: 'paid', providerRef: result.ref, receiptNo: receipt, paidAt: new Date() } });
     await Payable.updateMany({ payoutId: payout._id }, { $set: { status: 'paid' } });
     await notify(payout.userId, {
-      type: 'payout_paid', title: `You were paid ${rupees(payout.amount)}`,
-      body: `Your stipend for ${event?.title || 'an event'} was sent to ${payout.upiMasked}. Your receipt is in Earnings.`, link: '/earnings',
+      type: 'payout_paid',
+      title: `🎉 Stipend Paid: ${rupees(payout.amount)}`,
+      body: `Your payment statement is ready! An instant stipend of ${rupees(payout.amount)} was transferred to your UPI (${payout.upiMasked}) for ${event?.title || 'an event'}. Statement #${receipt}. Click here to view and print your verified receipt slip.`,
+      link: `/earnings?receipt=${payout._id}`,
+      email: true,
     });
   } catch (err) {
     // Failure: give the organizer their money back and reopen the payables so the payout can be retried.

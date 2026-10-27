@@ -9,6 +9,7 @@ import { Dispute } from '../../models/Community.js';
 import { User } from '../../models/User.js';
 import { Organization } from '../../models/Organization.js';
 import { Payable } from '../../models/Money.js';
+import { SwapRequest } from '../../models/SwapRequest.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { validate } from '../../middleware/validate.js';
 import { joinLimiter } from '../../middleware/limits.js';
@@ -184,11 +185,12 @@ router.get(
   '/me/shifts',
   asyncHandler(async (req, res) => {
     const signups = await Signup.find({ userId: req.user.id, status: { $nin: ['confirming'] } }).sort({ start: -1 }).limit(200);
-    const [shifts, attendance, disputes, payables] = await Promise.all([
+    const [shifts, attendance, disputes, payables, swaps] = await Promise.all([
       Shift.find({ _id: { $in: signups.map((s) => s.shiftId) } }),
       Attendance.find({ signupId: { $in: signups.map((s) => s._id) } }),
       Dispute.find({ raisedBy: req.user.id }).select('attendanceId status'),
       Payable.find({ userId: req.user.id }),
+      SwapRequest.find({ fromSignupId: { $in: signups.map((s) => s._id) }, status: { $in: ['open', 'claimed'] } }),
     ]);
     const [events, roles] = await Promise.all([
       Event.find({ _id: { $in: shifts.map((s) => s.eventId) } }).select('title venue status cancelReason'),
@@ -199,12 +201,14 @@ router.get(
     const A = Object.fromEntries(attendance.map((a) => [String(a.signupId), a]));
     const D = Object.fromEntries(disputes.map((d) => [String(d.attendanceId), d.status]));
     const P = Object.fromEntries(payables.map((p) => [String(p.attendanceId), p]));
+    const SW = Object.fromEntries(swaps.map((sw) => [String(sw.fromSignupId), sw]));
 
     const mapped = signups
       .map((s) => {
         const sh = S[String(s.shiftId)];
         const a = A[String(s._id)];
         const ev = E[String(s.eventId)];
+        const sw = SW[String(s._id)];
         const payable = a ? P[String(a._id)] : null;
         const isPaid = payable?.status === 'paid';
         const isEventCancelled = ev?.status === 'cancelled';
@@ -222,6 +226,7 @@ router.get(
           role: R[String(s.roleId)]?.name,
           attendance: a && { _id: a._id, status: a.status, minutesWorked: a.minutesWorked, approvedMinutes: a.approvedMinutes, late: a.late, earlyCheckout: a.earlyCheckout, dispute: D[String(a._id)] || null },
           payable: payable && { status: payable.status, amount: payable.amount },
+          swap: sw ? { _id: sw._id, status: sw.status, note: sw.note, claimedBy: sw.claimedBy, expiresAt: sw.expiresAt } : null,
           isPaid,
           isCancelled,
           isEventCancelled,

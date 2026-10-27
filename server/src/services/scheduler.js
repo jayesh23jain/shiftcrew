@@ -4,6 +4,7 @@ import { Event } from '../models/Event.js';
 import { notify } from './notify.js';
 import { processEndedShifts } from './attendance.service.js';
 import { processQueuedPayouts } from './payouts.service.js';
+import { expirePendingSwaps } from './swap.service.js';
 
 /*
  * In-process scheduler. Every task "claims" its work with an atomic update first, so running several
@@ -42,6 +43,7 @@ export async function runSchedulerOnce() {
     ['events', advanceEvents],
     ['attendance', processEndedShifts],
     ['payouts', processQueuedPayouts],
+    ['expire-swaps', expirePendingSwaps],
   ];
   for (const [name, fn] of tasks) {
     try { await fn(); } catch (err) { console.error(`scheduler task failed: ${name}`, err); }

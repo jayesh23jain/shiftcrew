@@ -8,6 +8,8 @@ import ShiftsTab from './manage/ShiftsTab.jsx';
 import HoursTab from './manage/HoursTab.jsx';
 import FundsTab from './manage/FundsTab.jsx';
 import CommsTab from './manage/CommsTab.jsx';
+import MissionControlTab from './manage/MissionControlTab.jsx';
+import PlanWithAiModal from './manage/PlanWithAiModal.jsx';
 
 function getRoleIcon(name = '') {
   const n = name.toLowerCase();
@@ -73,11 +75,20 @@ export default function EventManage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [copiedLink, setCopiedLink] = useState(false);
+  const [showAiPlanModal, setShowAiPlanModal] = useState(false);
+
+  const { data: aiStatus } = useQuery({
+    queryKey: ['aiStatus'],
+    queryFn: async () => (await api.get('/ai/status')).data,
+    staleTime: 60000,
+  });
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['event', id],
     queryFn: async () => (await api.get(`/events/${id}`)).data,
   });
+
+  const [statusError, setStatusError] = useState('');
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['event', id] });
@@ -85,7 +96,13 @@ export default function EventManage() {
   };
   const setStatus = useMutation({
     mutationFn: async (body) => (await api.post(`/events/${id}/status`, body)).data,
-    onSuccess: refresh,
+    onSuccess: () => {
+      setStatusError('');
+      refresh();
+    },
+    onError: (err) => {
+      setStatusError(errorMessage(err));
+    },
   });
   const remove = useMutation({
     mutationFn: async () => api.delete(`/events/${id}`),
@@ -104,7 +121,7 @@ export default function EventManage() {
     );
   }
 
-  const { event, roles } = data;
+  const { event, roles = [] } = data;
   const editable = ['draft', 'published', 'ongoing'].includes(event.status);
   const inviteLink =
     event.visibility === 'invite_only'
@@ -127,8 +144,9 @@ export default function EventManage() {
 
   return (
     <div className="manage-overview-wrapper">
-      {/* Neo-Brutalist Event Operations Hero Card */}
-      <div className="manage-hero-bento">
+      {/* Neo-Brutalist Event Operations Hero Card (Hidden on Live Control to eliminate redundant hero box) */}
+      {tab !== 'live' && (
+        <div className="manage-hero-bento">
         <div className="manage-hero-top">
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
@@ -179,19 +197,56 @@ export default function EventManage() {
 
         {/* Action Controls Bar */}
         <div className="manage-hero-actions-bar">
+          <button
+            type="button"
+            className="manage-action-btn"
+            style={{
+              background: tab === 'live' ? '#ef4444' : '#fee2e2',
+              color: tab === 'live' ? '#ffffff' : '#991b1b',
+              border: '2px solid #0f172a',
+              boxShadow: '3px 3px 0px #0f172a',
+              fontWeight: 950,
+            }}
+            onClick={() => go('live')}
+          >
+            🔴 Live Mission Control
+          </button>
+          {aiStatus?.enabled && editable && (
+            <button
+              type="button"
+              className="manage-action-btn"
+              style={{
+                background: '#e0e7ff',
+                color: '#3730a3',
+                border: '2px solid #0f172a',
+                boxShadow: '3px 3px 0px #0f172a',
+                fontWeight: 950,
+              }}
+              onClick={() => setShowAiPlanModal(true)}
+              title="Use AI to automatically draft crew roles and shifts"
+            >
+              ⚡ Plan with AI
+            </button>
+          )}
           {event.status === 'draft' && (
             <button
               className="manage-action-btn manage-btn-primary"
-              onClick={() => setStatus.mutate({ status: 'published' })}
+              onClick={() => {
+                setStatusError('');
+                setStatus.mutate({ status: 'published' });
+              }}
               disabled={setStatus.isPending}
             >
-              🚀 Publish Event
+              {setStatus.isPending ? 'Publishing...' : '🚀 Publish Event'}
             </button>
           )}
           {event.status === 'published' && (
             <button
               className="manage-action-btn manage-btn-white"
-              onClick={() => setStatus.mutate({ status: 'draft' })}
+              onClick={() => {
+                setStatusError('');
+                setStatus.mutate({ status: 'draft' });
+              }}
               disabled={setStatus.isPending}
             >
               ↩ Move to Draft
@@ -230,7 +285,14 @@ export default function EventManage() {
             </button>
           )}
         </div>
+
+        {statusError && (
+          <div style={{ marginTop: '0.9rem' }}>
+            <Notice tone="danger">{statusError}</Notice>
+          </div>
+        )}
       </div>
+      )}
 
       {/* Mobile Tab Bar */}
       <div className="event-manage-tabs-desktop-hidden">
@@ -239,6 +301,7 @@ export default function EventManage() {
           onChange={go}
           tabs={[
             { id: 'overview', label: 'Overview' },
+            { id: 'live', label: '🔴 Live Control' },
             { id: 'shifts', label: 'Shifts' },
             { id: 'hours', label: 'Hours' },
             { id: 'funds', label: 'Funds and payouts' },
@@ -303,19 +366,36 @@ export default function EventManage() {
           )}
 
           {/* Role Manager with Bento Cards & 1-Click Presets */}
-          <RoleManager eventId={id} roles={roles} editable={editable} onChange={refresh} event={event} onGoToShifts={go} />
+          <RoleManager
+            eventId={id}
+            roles={roles}
+            editable={editable}
+            onChange={refresh}
+            event={event}
+            onGoToShifts={go}
+            onOpenAiPlan={() => setShowAiPlanModal(true)}
+            aiEnabled={aiStatus?.enabled}
+          />
         </>
       )}
 
+      {tab === 'live' && <MissionControlTab event={event} />}
       {tab === 'shifts' && <ShiftsTab event={event} roles={roles} />}
       {tab === 'hours' && <HoursTab event={event} />}
       {tab === 'funds' && <FundsTab event={event} />}
       {tab === 'comms' && <CommsTab event={event} roles={roles} />}
+
+      {/* Plan with AI Modal */}
+      <PlanWithAiModal
+        event={event}
+        isOpen={showAiPlanModal}
+        onClose={() => setShowAiPlanModal(false)}
+      />
     </div>
   );
 }
 
-function RoleManager({ eventId, roles, editable, onChange, event, onGoToShifts }) {
+function RoleManager({ eventId, roles, editable, onChange, event, onGoToShifts, onOpenAiPlan, aiEnabled }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({ name: '', description: '', skills: '', leadEmail: '' });
   const [shiftModalRole, setShiftModalRole] = useState(null);
@@ -395,6 +475,23 @@ function RoleManager({ eventId, roles, editable, onChange, event, onGoToShifts }
             Roles define specific jobs volunteers apply for, with dedicated team leads to scan QR check-ins.
           </p>
         </div>
+
+        {aiEnabled && editable && (
+          <button
+            type="button"
+            className="manage-action-btn"
+            style={{
+              background: '#e0e7ff',
+              color: '#3730a3',
+              border: '2px solid #0f172a',
+              boxShadow: '3px 3px 0px #0f172a',
+              fontWeight: 950,
+            }}
+            onClick={onOpenAiPlan}
+          >
+            ⚡ Plan with AI
+          </button>
+        )}
       </div>
 
       {shiftSuccessMsg && (

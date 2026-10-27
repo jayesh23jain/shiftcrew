@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { downloadFile, errorMessage, fieldErrors } from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -18,6 +18,9 @@ const MILESTONE_TIERS = [
 export default function Earnings() {
   const qc = useQueryClient();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const receiptParam = searchParams.get('receipt');
+
   const [activeTab, setActiveTab] = useState('all'); // 'all' | 'paid' | 'pending'
   const [searchQuery, setSearchQuery] = useState('');
   const [upi, setUpi] = useState('');
@@ -31,6 +34,14 @@ export default function Earnings() {
     queryFn: async () => (await api.get('/payouts/mine')).data,
     refetchInterval: 15_000,
   });
+
+  // Auto-open statement slip if opened via notification link ?receipt=ID
+  useEffect(() => {
+    if (receiptParam && data?.payouts?.length) {
+      const match = data.payouts.find((p) => String(p._id) === String(receiptParam));
+      if (match) setSelectedReceipt(match);
+    }
+  }, [receiptParam, data]);
 
   // 2. Fetch volunteer stats
   const { data: stats } = useQuery({
@@ -599,14 +610,24 @@ export default function Earnings() {
               >
                 Close
               </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => downloadFile(`/payouts/${selectedReceipt._id}/receipt`)}
-                style={{ fontWeight: 900 }}
-              >
-                📥 Download PDF Receipt
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-white"
+                  onClick={() => window.print()}
+                  style={{ fontWeight: 850, border: '2px solid #0f172a' }}
+                >
+                  🖨️ Print Statement
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => downloadFile(`/payouts/${selectedReceipt._id}/receipt`)}
+                  style={{ fontWeight: 900 }}
+                >
+                  📥 Download PDF
+                </button>
+              </div>
             </div>
           </div>
         </div>

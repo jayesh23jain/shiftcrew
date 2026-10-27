@@ -50,6 +50,8 @@ const paymentSchema = new Schema(
     status: { type: String, enum: ['created', 'captured', 'failed'], default: 'created' },
     capturedAt: Date,
     failureReason: String,
+    purpose: { type: String, enum: ['fund', 'direct_payout'], default: 'fund' },
+    meta: { type: Schema.Types.Mixed },
   },
   { timestamps: true }
 );

@@ -769,6 +769,98 @@ function OrganizerHome({ user }) {
         </div>
       </div>
 
+      {/* Operational Dashboard Quick Launcher Hub */}
+      <div className="dash-ops-hub-card">
+        <div className="dash-ops-hub-top">
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+              <span className="dash-ops-badge">⚡ EVENT COMMAND CENTER</span>
+              <h2 className="dash-ops-title">Operational Dashboard</h2>
+            </div>
+            <p className="dash-ops-subtitle" style={{ margin: '0.25rem 0 0' }}>
+              Select any event below to open its dedicated <strong>Operational Dashboard</strong> for Shifts, QR Check-ins, Attendance Hours, and Direct Crew Payouts.
+            </p>
+          </div>
+          {allEvents.length > 0 && (
+            <Link
+              to={`/manage/events/${allEvents[0]._id}`}
+              className="dash-ops-primary-btn"
+              style={{ whiteSpace: 'nowrap' }}
+            >
+              <span>⚡ Launch {allEvents[0].title} Dashboard →</span>
+            </Link>
+          )}
+        </div>
+
+        {allEvents.length > 0 ? (
+          <div className="dash-ops-events-grid">
+            {allEvents.map((ev) => (
+              <div key={ev._id} className="dash-ops-event-card">
+                <div className="dash-ops-event-top">
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                      <span className="dash-ops-cat-pill">
+                        {CATEGORIES[ev.category] || ev.category?.toUpperCase() || 'EVENT'}
+                      </span>
+                      <span className={`chip chip-${ev.status}`} style={{ fontSize: '0.68rem', padding: '1px 6px' }}>
+                        {ev.status}
+                      </span>
+                    </div>
+                    <strong className="dash-ops-event-name">{ev.title}</strong>
+                    <div style={{ fontSize: '0.78rem', color: '#64748b', fontWeight: 650 }}>
+                      📅 {formatRange(ev.startDate, ev.endDate)} {ev.venue?.city ? `• 📍 ${ev.venue.city}` : ''}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Direct Action Button to Operational Dashboard */}
+                <div className="dash-ops-btn-row">
+                  <Link
+                    to={`/manage/events/${ev._id}`}
+                    className="dash-ops-primary-btn"
+                    title={`Open Operational Dashboard for ${ev.title}`}
+                  >
+                    <span>⚡ Open Operational Dashboard →</span>
+                  </Link>
+
+                  <div className="dash-ops-tab-pills">
+                    <Link
+                      to={`/manage/events/${ev._id}?tab=live`}
+                      className="dash-ops-sub-btn"
+                      style={{ color: '#991b1b', background: '#fee2e2', fontWeight: 950, border: '1.5px solid #dc2626' }}
+                      title="Open Real-Time Mission Control"
+                    >
+                      🔴 Live Control
+                    </Link>
+                    <Link to={`/manage/events/${ev._id}?tab=shifts`} className="dash-ops-sub-btn">
+                      Shifts
+                    </Link>
+                    <Link to={`/manage/events/${ev._id}?tab=hours`} className="dash-ops-sub-btn">
+                      Hours
+                    </Link>
+                    <Link to={`/manage/events/${ev._id}?tab=funds`} className="dash-ops-sub-btn" style={{ color: '#166534', background: '#dcfce7', fontWeight: 900 }}>
+                      💰 Payouts
+                    </Link>
+                    <Link to={`/manage/events/${ev._id}?tab=overview`} className="dash-ops-sub-btn">
+                      Overview
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ padding: '1.5rem', background: '#f8fafc', borderRadius: '12px', border: '2px solid #0f172a', textAlign: 'center' }}>
+            <p style={{ margin: '0 0 0.75rem', fontWeight: 700, color: '#334155' }}>
+              No events created yet. Create your first event to access its operational command center!
+            </p>
+            <Link to="/manage/events/new" className="dash-ops-primary-btn" style={{ display: 'inline-flex' }}>
+              + Create Your First Event
+            </Link>
+          </div>
+        )}
+      </div>
+
       {/* Two-Column Bento Layout */}
       <div className="dash-bento-split">
         {/* Left Column: Approvals + Needs Attention + Next 48h Shifts */}

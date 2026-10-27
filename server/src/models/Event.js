@@ -30,6 +30,7 @@ const eventSchema = new Schema(
     visibility: { type: String, enum: ['public', 'invite_only'], default: 'public' },
     inviteCode: { type: String },
     applicationMode: { type: String, enum: ['open', 'approval'], default: 'open' },
+    autoApproveSwaps: { type: Boolean, default: false },
     status: { type: String, enum: EVENT_STATUSES, default: 'draft' },
     // Stored in paise (integers). Calculated from shifts in a later phase.
     budgetEstimate: { type: Number, default: 0, min: 0 },

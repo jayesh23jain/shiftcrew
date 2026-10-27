@@ -4,6 +4,7 @@ let accessToken = null;
 let onAuthFail = null;
 
 export const setAccessToken = (t) => { accessToken = t; };
+export const getAccessToken = () => accessToken;
 export const setAuthFailHandler = (fn) => { onAuthFail = fn; };
 
 // In development the Vite proxy serves /api. In production set VITE_API_URL to the API origin.

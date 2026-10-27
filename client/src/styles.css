@@ -320,6 +320,14 @@ textarea {
   background: #fff;
 }
 
+input[type="checkbox"],
+input[type="radio"] {
+  width: auto;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
 input:focus,
 select:focus,
 textarea:focus {
@@ -7201,4 +7209,222 @@ a.badge:hover {
   padding-top: 0.65rem;
   border-top: 1.2px dashed #cbd5e1;
   margin-top: 0.25rem;
+}
+
+/* Direct Pay & Razorpay Elements */
+.btn-direct-pay {
+  background: #0f172a !important;
+  color: #ffffff !important;
+  border: 1.8px solid #0f172a !important;
+  box-shadow: 2px 2px 0px #0f172a !important;
+  font-weight: 850 !important;
+  transition: all 0.15s ease !important;
+}
+
+.btn-direct-pay:hover:not(:disabled) {
+  background: #1e293b !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 3px 3px 0px #0f172a !important;
+}
+
+.manage-btn-direct {
+  background: #0f172a !important;
+  color: #ffffff !important;
+  border: 2px solid #0f172a !important;
+  box-shadow: 2.5px 2.5px 0px #0f172a !important;
+  font-weight: 900 !important;
+}
+
+.manage-btn-direct:hover:not(:disabled) {
+  background: #1e293b !important;
+  transform: translateY(-1.5px) !important;
+  box-shadow: 3.5px 3.5px 0px #0f172a !important;
+}
+
+.funds-direct-drawer {
+  background: #f8fafc;
+  border: 2.5px solid #0f172a;
+  border-radius: 20px;
+  box-shadow: 4.5px 4.5px 0px #0f172a;
+  padding: 1.45rem 1.65rem;
+  margin-bottom: 1.5rem;
+}
+
+/* Statement & Receipt Print Styles */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .printable-statement,
+  .printable-statement * {
+    visibility: visible;
+  }
+  .printable-statement {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 20px !important;
+    box-shadow: none !important;
+    border: 2px solid #000000 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* Operational Dashboard Quick Launcher Hub */
+.dash-ops-hub-card {
+  background: #ffffff;
+  border: 3px solid #0f172a;
+  border-radius: 20px;
+  box-shadow: 6px 6px 0px #0f172a;
+  padding: 1.35rem 1.65rem;
+  margin-bottom: 1.75rem;
+}
+
+.dash-ops-hub-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+
+.dash-ops-badge {
+  background: #fef08a;
+  color: #854d0e;
+  border: 1.5px solid #0f172a;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  padding: 2px 10px;
+  letter-spacing: 0.5px;
+}
+
+.dash-ops-title {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 950;
+  color: #0f172a;
+  margin: 0;
+}
+
+.dash-ops-subtitle {
+  font-size: 0.85rem;
+  color: #475569;
+  font-weight: 600;
+}
+
+.dash-ops-events-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1rem;
+}
+
+.dash-ops-event-card {
+  background: #f8fafc;
+  border: 2px solid #0f172a;
+  border-radius: 14px;
+  padding: 1rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.85rem;
+  box-shadow: 2.5px 2.5px 0px #0f172a;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dash-ops-event-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 4px 4px 0px #0f172a;
+}
+
+.dash-ops-cat-pill {
+  font-size: 0.68rem;
+  font-weight: 850;
+  background: #e2e8f0;
+  border: 1px solid #0f172a;
+  border-radius: 4px;
+  padding: 1px 6px;
+  color: #0f172a;
+}
+
+.dash-ops-event-name {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  color: #0f172a;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.dash-ops-btn-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dash-ops-primary-btn {
+  background: #0f172a !important;
+  color: #ffffff !important;
+  border: 2px solid #0f172a !important;
+  border-radius: 10px !important;
+  padding: 0.55rem 0.95rem !important;
+  font-size: 0.86rem !important;
+  font-weight: 900 !important;
+  text-decoration: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.4rem !important;
+  box-shadow: 2.5px 2.5px 0px #0f172a !important;
+  transition: all 0.15s ease !important;
+}
+
+.dash-ops-primary-btn:hover {
+  background: #1e293b !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 3.5px 3.5px 0px #0f172a !important;
+}
+
+.dash-ops-tab-pills {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.dash-ops-sub-btn {
+  flex: 1;
+  text-align: center;
+  font-size: 0.74rem;
+  font-weight: 800;
+  padding: 4px 6px;
+  border: 1.2px solid #0f172a;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #334155;
+  text-decoration: none;
+  transition: all 0.1s ease;
+}
+
+.dash-ops-sub-btn:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+/* Mission Control Operations Console Layout */
+.mission-ops-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(320px, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .mission-ops-layout {
+    grid-template-columns: 1fr;
+  }
 }

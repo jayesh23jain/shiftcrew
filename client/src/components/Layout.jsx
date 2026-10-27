@@ -5,6 +5,7 @@ import api from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { StatusChip } from './ui.jsx';
 import { CATEGORIES } from '../lib.js';
+import AssistantDrawer from './AssistantDrawer.jsx';
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -12,6 +13,8 @@ export default function Layout() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const isOrganizer = user?.role === 'organizer' || user?.role === 'admin';
 
   // Check if current route is managing a specific event
   const eventManageMatch = location.pathname.match(/^\/manage\/events\/([a-f\d]{24})/i);
@@ -37,6 +40,27 @@ export default function Layout() {
     queryFn: async () => (await api.get('/attendance/lead/shifts')).data.shifts,
     enabled: !!user,
     refetchInterval: 120_000,
+  });
+  const { data: orgEventsData } = useQuery({
+    queryKey: ['events', 'mine'],
+    queryFn: async () => (await api.get('/events/mine')).data,
+    enabled: !!user && isOrganizer,
+  });
+  const firstEventId = orgEventsData?.events?.[0]?._id;
+
+  const { data: openSwapsData } = useQuery({
+    queryKey: ['swaps', 'open-count'],
+    queryFn: async () => (await api.get('/swaps')).data,
+    enabled: !!user && !isOrganizer,
+    refetchInterval: 30_000,
+  });
+  const openSwapsCount = openSwapsData?.swaps?.length || 0;
+
+  const { data: aiStatus } = useQuery({
+    queryKey: ['ai-status'],
+    queryFn: async () => (await api.get('/ai/status')).data,
+    enabled: !!user,
+    staleTime: 60_000,
   });
 
   const onLogout = async () => {
@@ -99,11 +123,21 @@ export default function Layout() {
           <div className="topbar-actions">
             {user ? (
               <>
-                {/* Both Buttons moved into Top Navbar */}
+                {/* Organizer Topbar Action Buttons */}
                 {isOrganizer && (
                   <div className="topbar-organizer-actions">
-                    <Link className="topbar-bento-btn topbar-btn-secondary" to="/dashboard">
-                      Your Managed Events
+                    {firstEventId && (
+                      <Link
+                        className="topbar-bento-btn topbar-btn-secondary"
+                        to={`/manage/events/${firstEventId}`}
+                        style={{ background: '#fef08a', color: '#854d0e', borderColor: '#0f172a', fontWeight: 900 }}
+                        title="Open Operational Dashboard"
+                      >
+                        ⚡ Operations Dashboard
+                      </Link>
+                    )}
+                    <Link className="topbar-bento-btn topbar-btn-secondary" to="/events">
+                      Your Events
                     </Link>
                     <Link className="topbar-bento-btn topbar-btn-primary" to="/manage/events/new">
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -115,19 +149,91 @@ export default function Layout() {
                   </div>
                 )}
 
-                {/* Volunteer Hours Pill from reference design */}
-                <div className="topbar-hours-pill" title="Volunteer hours completed">
-                  <span className="hours-avatar-circle">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <polyline points="12 6 12 12 16 14"></polyline>
-                    </svg>
-                  </span>
-                  <span className="hours-pill-text">
-                    <span className="hours-tag">HOURS:</span>
-                    <strong className="hours-val">6</strong>
-                  </span>
-                </div>
+                {/* Global Swap Board Button in Top Navbar (volunteers only) */}
+                {!isOrganizer && (
+                  <NavLink
+                    to="/swap-board"
+                    className={({ isActive }) => `topbar-bento-btn topbar-swap-btn ${isActive ? 'active' : ''}`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.45rem',
+                      background: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%)',
+                      border: '1.5px solid #ea580c',
+                      color: '#c2410c',
+                      fontWeight: 800,
+                      padding: '0.42rem 0.85rem',
+                      borderRadius: '10px',
+                      textDecoration: 'none',
+                      fontSize: '0.84rem',
+                      boxShadow: '2px 2px 0px rgba(0,0,0,0.85)',
+                      transition: 'all 0.15s ease',
+                    }}
+                    title="Browse Open Shift Swaps across events"
+                  >
+                    <span style={{ fontSize: '0.95rem' }}>🔄</span>
+                    <span>Swap Board</span>
+                    {openSwapsCount > 0 && (
+                      <span
+                        style={{
+                          background: '#ea580c',
+                          color: '#ffffff',
+                          borderRadius: '10px',
+                          padding: '0.1rem 0.45rem',
+                          fontSize: '0.72rem',
+                          fontWeight: 900,
+                          marginLeft: '0.2rem',
+                        }}
+                      >
+                        {openSwapsCount}
+                      </span>
+                    )}
+                  </NavLink>
+                )}
+
+                {/* Volunteer Hours Pill (volunteers only) */}
+                {!isOrganizer && (
+                  <div className="topbar-hours-pill" title="Volunteer hours completed">
+                    <span className="hours-avatar-circle">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <polyline points="12 6 12 12 16 14"></polyline>
+                      </svg>
+                    </span>
+                    <span className="hours-pill-text">
+                      <span className="hours-tag">HOURS:</span>
+                      <strong className="hours-val">6</strong>
+                    </span>
+                  </div>
+                )}
+
+                {/* Assistant Trigger in Topbar */}
+                {user && (
+                  <button
+                    type="button"
+                    onClick={() => setAssistantOpen(true)}
+                    className="btn btn-white"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      padding: '0.42rem 0.85rem',
+                      fontSize: '0.8rem',
+                      fontWeight: 900,
+                      borderRadius: '999px',
+                      border: '2px solid #0f172a',
+                      background: '#ffffff',
+                      color: '#0f172a',
+                      boxShadow: '2px 2px 0 #0f172a',
+                      cursor: 'pointer',
+                      marginRight: '0.15rem',
+                    }}
+                    title="Ask ShiftCrew Volunteer Assistant"
+                  >
+                    <span>✨</span>
+                    <span>Assistant</span>
+                  </button>
+                )}
 
                 {/* Cool Themed Notification Bell Button */}
                 <Link
@@ -216,6 +322,16 @@ export default function Layout() {
                           <rect x="14" y="3" width="7" height="7"></rect>
                           <rect x="14" y="14" width="7" height="7"></rect>
                           <rect x="3" y="14" width="7" height="7"></rect>
+                        </svg>
+                      ),
+                    },
+                    {
+                      id: 'live',
+                      label: 'Live Control',
+                      icon: (
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="3"></circle>
+                          <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14M15.54 8.46a5 5 0 0 1 0 7.08M8.46 8.46a5 5 0 0 0 0 7.08"></path>
                         </svg>
                       ),
                     },
@@ -352,18 +468,35 @@ export default function Layout() {
                   </NavLink>
 
                   {isOrganizer && (
-                    <NavLink
-                      to="/manage/events/new"
-                      className={({ isActive }) => `sidebar-nav-item ${isActive ? 'active' : ''}`}
-                      onClick={() => setMobileMenuOpen(false)}
-                    >
-                      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <line x1="12" y1="8" x2="12" y2="16"></line>
-                        <line x1="8" y1="12" x2="16" y2="12"></line>
-                      </svg>
-                      <span>Create Event</span>
-                    </NavLink>
+                    <>
+                      {firstEventId && (
+                        <NavLink
+                          to={`/manage/events/${firstEventId}`}
+                          className={({ isActive }) => `sidebar-nav-item ${isActive ? 'active' : ''}`}
+                          onClick={() => setMobileMenuOpen(false)}
+                        >
+                          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                            <line x1="8" y1="21" x2="16" y2="21"></line>
+                            <line x1="12" y1="17" x2="12" y2="21"></line>
+                          </svg>
+                          <span>Event Operations</span>
+                        </NavLink>
+                      )}
+
+                      <NavLink
+                        to="/manage/events/new"
+                        className={({ isActive }) => `sidebar-nav-item ${isActive ? 'active' : ''}`}
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <line x1="12" y1="8" x2="12" y2="16"></line>
+                          <line x1="8" y1="12" x2="16" y2="12"></line>
+                        </svg>
+                        <span>Create Event</span>
+                      </NavLink>
+                    </>
                   )}
 
                   {!isOrganizer && (
@@ -378,6 +511,22 @@ export default function Layout() {
                           <polyline points="12 6 12 12 16 14"></polyline>
                         </svg>
                         <span>My shifts</span>
+                      </NavLink>
+
+                      <NavLink
+                        to="/swap-board"
+                        className={({ isActive }) => `sidebar-nav-item ${isActive ? 'active' : ''}`}
+                        onClick={() => setMobileMenuOpen(false)}
+                      >
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M7 16V4M7 4L3 8M7 4L11 8M17 8V20M17 20L21 16M17 20L13 16" />
+                        </svg>
+                        <span>Swap Board</span>
+                        {openSwapsCount > 0 && (
+                          <span style={{ marginLeft: 'auto', background: '#ea580c', color: '#fff', fontSize: '0.72rem', fontWeight: 800, padding: '0.1rem 0.5rem', borderRadius: '10px' }}>
+                            {openSwapsCount}
+                          </span>
+                        )}
                       </NavLink>
 
                       <NavLink
@@ -543,6 +692,54 @@ export default function Layout() {
           </footer>
         </main>
       </div>
+
+      {/* Floating Assistant Launcher */}
+      {user && (
+        <button
+          type="button"
+          onClick={() => setAssistantOpen(true)}
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            zIndex: 900,
+            background: '#0f172a',
+            color: '#ffffff',
+            border: '2.5px solid #ffffff',
+            borderRadius: '999px',
+            padding: '0.65rem 1.15rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            fontWeight: 900,
+            fontSize: '0.88rem',
+            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.35), 4px 4px 0 #0f172a',
+            cursor: 'pointer',
+            transition: 'transform 0.15s ease',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-2px)')}
+          onMouseLeave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
+          title="Open Volunteer AI Assistant"
+        >
+          <span style={{ fontSize: '1.15rem' }}>✨</span>
+          <span>Assistant</span>
+          {aiStatus?.canUseUserData && (
+            <span
+              style={{
+                background: '#22c55e',
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                display: 'inline-block',
+              }}
+              title="Assistant Active"
+            />
+          )}
+        </button>
+      )}
+
+      {/* Assistant Drawer */}
+      <AssistantDrawer isOpen={assistantOpen} onClose={() => setAssistantOpen(false)} />
     </div>
   );
 }

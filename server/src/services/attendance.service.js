@@ -9,6 +9,7 @@ import { createPayableFor, markSettled } from './payouts.service.js';
 import { penalize } from '../utils/reliability.js';
 import { audit } from '../utils/audit.js';
 import { notify } from './notify.js';
+import { emitMissionUpdate } from '../socket.js';
 
 const MIN = 60 * 1000;
 export const CHECKIN_EARLY_MS = 30 * MIN;
@@ -32,10 +33,12 @@ export function assertScanWindow(shift, now = new Date()) {
 
 export async function checkIn(signup, shift, byUserId, { at = new Date(), manual = false } = {}) {
   try {
-    return await Attendance.create({
+    const record = await Attendance.create({
       signupId: signup._id, shiftId: shift._id, eventId: shift.eventId, orgId: shift.orgId, roleId: shift.roleId, userId: signup.userId,
       status: 'checked_in', checkInAt: at, checkInBy: byUserId, late: at > new Date(+shift.start + LATE_GRACE_MS), manual,
     });
+    emitMissionUpdate(shift.eventId, { reason: 'check_in', details: { userId: signup.userId, shiftId: shift._id } });
+    return record;
   } catch (err) {
     if (err.code === 11000) throw ApiError.conflict('This volunteer is already checked in');
     throw err;
@@ -73,6 +76,7 @@ export async function checkOut(attendance, shift, byUserId, { at = new Date(), m
     });
   }
 
+  emitMissionUpdate(attendance.eventId || shift.eventId, { reason: 'check_out', details: { userId: attendance.userId, shiftId: shift._id } });
   return done;
 }
 
@@ -91,6 +95,7 @@ export async function markNoShow(signup, shift, { notifyUser = true } = {}) {
         link: '/my-shifts',
       });
     }
+    emitMissionUpdate(shift.eventId, { reason: 'no_show', details: { userId: signup.userId, shiftId: shift._id } });
     return att;
   } catch (err) {
     if (err.code === 11000) return null;
@@ -128,6 +133,7 @@ export async function approveAttendance(attendanceId, actor, { minutes, reason }
     type: 'hours_approved', title: 'Your hours were approved',
     body: `${hoursText(finalMinutes)} approved.${payable ? ` ${rupees(payable.amount)} is ready to be paid out.` : ''}`, link: '/earnings', email: false,
   });
+  emitMissionUpdate(done.eventId, { reason: 'attendance_approved' });
   return { attendance: done, payable };
 }
 
@@ -141,6 +147,7 @@ export async function rejectAttendance(attendanceId, actor, reason) {
   await markSettled(done.signupId);
   await audit(actor, 'attendance.rejected', { entityType: 'Attendance', entityId: done._id, orgId: done.orgId, eventId: done.eventId, meta: { reason } });
   await notify(done.userId, { type: 'hours_rejected', title: 'Your hours were not approved', body: `Reason: ${reason}. You can raise a dispute from My shifts.`, link: '/my-shifts' });
+  emitMissionUpdate(done.eventId, { reason: 'attendance_rejected' });
   return done;
 }
 

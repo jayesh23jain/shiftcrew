@@ -11,6 +11,8 @@ import { User } from '../../src/models/User.js';
 import { processEndedShifts } from '../../src/services/attendance.service.js';
 import { processQueuedPayouts } from '../../src/services/payouts.service.js';
 
+import { connectTestDb, disconnectTestDb } from './testDb.js';
+
 let server, base;
 const S = {}; // shared state across the ordered scenario
 
@@ -41,7 +43,7 @@ async function until(fn, ms = 5000) {
 }
 
 beforeAll(async () => {
-  await mongoose.connect(process.env.MONGO_URI);
+  await connectTestDb();
   await mongoose.connection.dropDatabase();
   // FerretDB (the stand-in test engine) lacks TTL indexes, which real MongoDB supports. Ignore only that error.
   await Promise.all(Object.values(mongoose.models).map((m) => m.init().catch((e) => { if (!/expireAfterSeconds/.test(e.message)) throw e; })));
@@ -51,8 +53,7 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   server?.close();
-  await mongoose.connection.dropDatabase();
-  await mongoose.disconnect();
+  await disconnectTestDb();
 });
 
 describe('setup: organizer, event, role, shift', () => {

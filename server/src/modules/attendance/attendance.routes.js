@@ -120,8 +120,7 @@ router.post(
       return res.json({ action: 'check_in', volunteer: volunteer.name, late: a.late, at: a.checkInAt });
     }
     if (existing.status === 'checked_in') {
-      // Relaxed for testing: allow immediate checkout
-      // if (Date.now() - existing.checkInAt < 60 * 1000) throw ApiError.conflict('Checked in less than a minute ago');
+      if (Date.now() - existing.checkInAt < 60 * 1000) throw ApiError.conflict('Checked in less than a minute ago');
       const a = await att.checkOut(existing, shift, req.user.id);
       return res.json({ action: 'check_out', volunteer: volunteer.name, minutes: a.minutesWorked, at: a.checkOutAt });
     }
@@ -240,8 +239,13 @@ router.get(
         roleName: role?.name || 'Volunteer Role',
       },
       roster: signups.map((s) => ({
-        signupId: s._id, name: U[String(s.userId)]?.name, phone: U[String(s.userId)]?.phone,
-        status: A[String(s._id)]?.status || 'expected', late: A[String(s._id)]?.late, checkInAt: A[String(s._id)]?.checkInAt, checkOutAt: A[String(s._id)]?.checkOutAt,
+        signupId: s._id,
+        name: U[String(s.userId)]?.name,
+        phone: U[String(s.userId)]?.phone,
+        status: A[String(s._id)]?.status || 'expected',
+        late: A[String(s._id)]?.late,
+        checkInAt: A[String(s._id)]?.checkInAt,
+        checkOutAt: A[String(s._id)]?.checkOutAt,
       })),
     });
   })

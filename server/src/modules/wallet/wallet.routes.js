@@ -89,7 +89,7 @@ router.post(
     await assertOrgMember(payment.orgId, req.user);
     if (payment.provider !== 'razorpay' || !verifyCheckoutSignature(orderId, paymentId, signature)) throw ApiError.badRequest('Payment could not be verified');
     const out = await capturePayment({ orderId, paymentId, actor: req.user });
-    res.json({ status: out.payment.status });
+    res.json({ status: out.payment.status, directPayout: out.directPayout, summary: out.summary, statement: out.statement });
   })
 );
 

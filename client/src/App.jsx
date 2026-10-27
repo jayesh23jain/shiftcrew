@@ -13,6 +13,7 @@ import EventForm from './pages/EventForm.jsx';
 import EventManage from './pages/EventManage.jsx';
 import MyShifts from './pages/MyShifts.jsx';
 import QRPass from './pages/QRPass.jsx';
+import SwapBoard from './pages/SwapBoard.jsx';
 import Earnings from './pages/Earnings.jsx';
 import { Certificates, Verify } from './pages/Certificates.jsx';
 import Notifications from './pages/Notifications.jsx';
@@ -38,9 +39,11 @@ export default function App() {
         <Route path="manage/events/new" element={<RequireAuth roles={['organizer', 'admin']}><EventForm /></RequireAuth>} />
         <Route path="manage/events/:id" element={<RequireAuth roles={['organizer', 'admin']}><EventManage /></RequireAuth>} />
         <Route path="manage/events/:id/edit" element={<RequireAuth roles={['organizer', 'admin']}><EventForm /></RequireAuth>} />
-        <Route path="my-shifts" element={<RequireAuth><MyShifts /></RequireAuth>} />
-        <Route path="pass/:shiftId" element={<RequireAuth><QRPass /></RequireAuth>} />
-        <Route path="earnings" element={<RequireAuth><Earnings /></RequireAuth>} />
+        <Route path="my-shifts" element={<RequireAuth roles={['volunteer']}><MyShifts /></RequireAuth>} />
+        <Route path="swap-board" element={<RequireAuth roles={['volunteer']}><SwapBoard /></RequireAuth>} />
+        <Route path="swaps" element={<RequireAuth roles={['volunteer']}><SwapBoard /></RequireAuth>} />
+        <Route path="pass/:shiftId" element={<RequireAuth roles={['volunteer']}><QRPass /></RequireAuth>} />
+        <Route path="earnings" element={<RequireAuth roles={['volunteer']}><Earnings /></RequireAuth>} />
         <Route path="certificates" element={<RequireAuth><Certificates /></RequireAuth>} />
         <Route path="notifications" element={<RequireAuth><Notifications /></RequireAuth>} />
         <Route path="checkin" element={<RequireAuth><CheckInList /></RequireAuth>} />

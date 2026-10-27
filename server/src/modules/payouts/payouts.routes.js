@@ -13,6 +13,9 @@ import { assertOrgMember } from '../../utils/orgAccess.js';
 import { encrypt, maskUpi } from '../../utils/crypto.js';
 import { receiptPdf } from '../../services/pdf.js';
 import { releasePayouts } from '../../services/payouts.service.js';
+import { createFundingOrder } from '../../services/payments.js';
+import { feeFor } from '../../utils/money.js';
+import { env } from '../../config/env.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -72,6 +75,69 @@ router.post(
     if (!event) throw ApiError.notFound('Event not found');
     await assertOrgMember(event.orgId, req.user);
     res.json(await releasePayouts({ eventId: event._id, orgId: event.orgId, actor: req.user, payableIds: req.valid.body.payableIds }));
+  })
+);
+
+/* ---------------- Organizer: direct pay via Razorpay (no pre-funding needed) ---------------- */
+router.post(
+  '/direct-order',
+  moneyLimiter,
+  validate({ body: z.object({ eventId: objectId, payableIds: z.array(objectId).min(1).max(500) }) }),
+  asyncHandler(async (req, res) => {
+    const { eventId, payableIds } = req.valid.body;
+    const event = await Event.findById(eventId);
+    if (!event) throw ApiError.notFound('Event not found');
+    await assertOrgMember(event.orgId, req.user);
+
+    const payables = await Payable.find({
+      _id: { $in: payableIds },
+      eventId: event._id,
+      orgId: event.orgId,
+      status: 'approved',
+    });
+    if (!payables.length) throw ApiError.badRequest('No approved payables found to pay');
+
+    const userIds = [...new Set(payables.map((p) => String(p.userId)))];
+    const methods = await PayoutMethod.find({ userId: { $in: userIds }, verified: true });
+    const verifiedUserSet = new Set(methods.map((m) => String(m.userId)));
+
+    const validPayables = payables.filter((p) => verifiedUserSet.has(String(p.userId)));
+    if (!validPayables.length) {
+      throw ApiError.badRequest('None of the selected volunteers have linked their UPI payout method yet');
+    }
+
+    const subtotal = validPayables.reduce((s, p) => s + p.amount, 0);
+    const fee = feeFor(subtotal, env.PLATFORM_FEE_PERCENT);
+    const totalAmount = subtotal + fee;
+
+    const { payment, keyId } = await createFundingOrder({
+      orgId: event.orgId,
+      userId: req.user.id,
+      amount: totalAmount,
+      purpose: 'direct_payout',
+      meta: {
+        eventId: event._id,
+        payableIds: validPayables.map((p) => p._id),
+      },
+      notes: {
+        eventId: String(event._id),
+        eventTitle: event.title.slice(0, 30),
+        payablesCount: String(validPayables.length),
+      },
+    });
+
+    res.status(201).json({
+      order: {
+        orderId: payment.orderId,
+        amount: payment.amount,
+        subtotal,
+        fee,
+        provider: payment.provider,
+        keyId,
+        payableIds: validPayables.map((p) => p._id),
+        count: validPayables.length,
+      },
+    });
   })
 );
 

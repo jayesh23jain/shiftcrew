@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api, { errorMessage } from '../api/client.js';
+import { useAuth } from '../context/AuthContext.jsx';
 import { useUserLocation } from '../hooks/useUserLocation.js';
 import { CATEGORIES, SHIFT_STATE, SIGNUP_LABEL, formatRange, formatShift, payLabel, makeGoogleMapsDirectionsUrl } from '../lib.js';
 import { Empty, Notice, Pill, Spinner, StatusChip } from '../components/ui.jsx';
@@ -59,6 +61,8 @@ export default function EventDetail() {
   const [params] = useSearchParams();
   const code = params.get('code');
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const { getDistance } = useUserLocation();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['event', id, code],
@@ -75,9 +79,18 @@ export default function EventDetail() {
     enabled: !!data,
   });
 
+  // Shift Swap Board query
+  const { data: swapData = [] } = useQuery({
+    queryKey: ['event-swaps', id],
+    queryFn: async () => (await api.get(`/events/${id}/swaps`)).data.swaps,
+    enabled: !!data && !!user,
+    refetchInterval: 15_000,
+  });
+
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['shifts', id] });
     qc.invalidateQueries({ queryKey: ['my-shifts'] });
+    qc.invalidateQueries({ queryKey: ['event-swaps', id] });
   };
   const join = useMutation({
     mutationFn: async (shiftId) => (await api.post(`/shifts/${shiftId}/join`, { inviteCode: code || undefined })).data,
@@ -86,6 +99,32 @@ export default function EventDetail() {
   const leave = useMutation({
     mutationFn: async (shiftId) => (await api.post(`/shifts/${shiftId}/leave`)).data,
     onSuccess: refresh,
+  });
+
+  const claimSwap = useMutation({
+    mutationFn: async (swapId) => (await api.post(`/swaps/${swapId}/claim`)).data,
+    onSuccess: () => {
+      refresh();
+      window.alert('✓ Shift swap claimed! You will be notified once organizer approval is completed.');
+    },
+    onError: (err) => {
+      window.alert(errorMessage(err));
+    },
+  });
+
+  // Volunteer on-ground issue reporting to Control Room
+  const [issueMsg, setIssueMsg] = useState('');
+  const [issueCategory, setIssueCategory] = useState('supplies');
+  const [issueSent, setIssueSent] = useState(false);
+
+  const reportIssue = useMutation({
+    mutationFn: async ({ category, message }) =>
+      (await api.post(`/events/${id}/mission/report-issue`, { category, message })).data,
+    onSuccess: () => {
+      setIssueMsg('');
+      setIssueSent(true);
+      setTimeout(() => setIssueSent(false), 5000);
+    },
   });
 
   if (isLoading) return <Spinner label="Loading event details..." />;
@@ -105,8 +144,6 @@ export default function EventDetail() {
   const open = shifts.filter((s) => s.state !== 'cancelled');
   const visibleShifts = canManage ? open : open.filter((s) => s.state !== 'completed');
   const actionError = join.error || leave.error;
-
-  const { getDistance } = useUserLocation();
   const distance = getDistance(event?.venue);
   const mapsUrl = event?.venue ? makeGoogleMapsDirectionsUrl(event.venue) : getGoogleMapsUrl(event?.venue);
   const calUrl = getGoogleCalUrl(event);
@@ -485,6 +522,119 @@ export default function EventDetail() {
               </div>
             </div>
           </div>
+
+          {/* Volunteer Ground Issue Reporting Card */}
+          <div
+            className="dash-card"
+            style={{
+              background: '#fff1f2',
+              borderRadius: '20px',
+              padding: '1.5rem',
+              border: '2.5px solid #0f172a',
+              boxShadow: '4px 4px 0px #0f172a',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.65rem' }}>
+              <span style={{ fontSize: '1.4rem' }}>🚨</span>
+              <h4 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '1.2rem', fontWeight: 950, color: '#991b1b' }}>
+                Report Issue to Event Control Room
+              </h4>
+            </div>
+
+            <p style={{ margin: '0 0 1rem', fontSize: '0.84rem', color: '#881337', fontWeight: 650, lineHeight: '1.45' }}>
+              Experiencing an on-ground problem, shortage, or safety issue? Send an alert directly to the event team in the Mission Control room in real-time.
+            </p>
+
+            {issueSent && (
+              <div style={{ marginBottom: '1rem' }}>
+                <Notice tone="success">
+                  ✓ Incident reported to Control Room! The operations team has received your alert.
+                </Notice>
+              </div>
+            )}
+
+            {reportIssue.error && (
+              <div style={{ marginBottom: '1rem' }}>
+                <Notice tone="danger">{errorMessage(reportIssue.error)}</Notice>
+              </div>
+            )}
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!issueMsg.trim()) return;
+                reportIssue.mutate({ category: issueCategory, message: issueMsg.trim() });
+              }}
+            >
+              <div style={{ marginBottom: '0.75rem' }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: '#0f172a', marginBottom: '4px' }}>
+                  Category:
+                </label>
+                <select
+                  value={issueCategory}
+                  onChange={(e) => setIssueCategory(e.target.value)}
+                  style={{
+                    width: '100%',
+                    border: '1.5px solid #0f172a',
+                    borderRadius: '8px',
+                    padding: '6px 10px',
+                    fontSize: '0.84rem',
+                    fontWeight: 750,
+                    background: '#ffffff',
+                  }}
+                >
+                  <option value="supplies">💧 Water / Food / Supplies Shortage</option>
+                  <option value="crowd">👥 Crowd Control & Safety Alert</option>
+                  <option value="checkin">🎟️ Check-In Desk / QR Pass Scanning Problem</option>
+                  <option value="tech">💻 Technical / Sound / Audio Equipment Issue</option>
+                  <option value="safety">🛡️ Medical / Emergency / Safety Incident</option>
+                  <option value="other">⚡ Other Ground Problem</option>
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '0.85rem' }}>
+                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 800, color: '#0f172a', marginBottom: '4px' }}>
+                  Issue Description:
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={issueMsg}
+                  onChange={(e) => setIssueMsg(e.target.value)}
+                  placeholder="Describe what's happening (e.g. 'East entrance is running out of wristbands', 'Barricade loose near stage')..."
+                  style={{
+                    width: '100%',
+                    border: '1.5px solid #0f172a',
+                    borderRadius: '10px',
+                    padding: '8px 12px',
+                    fontSize: '0.86rem',
+                    fontFamily: 'inherit',
+                    resize: 'vertical',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={reportIssue.isPending || !issueMsg.trim()}
+                style={{
+                  width: '100%',
+                  justifyContent: 'center',
+                  padding: '8px 14px',
+                  fontWeight: 900,
+                  fontSize: '0.88rem',
+                  background: '#e11d48',
+                  color: '#ffffff',
+                  border: '2px solid #0f172a',
+                  boxShadow: '3px 3px 0px #0f172a',
+                }}
+              >
+                {reportIssue.isPending ? 'Sending Alert...' : '🚨 Send Urgent Alert to Control Room'}
+              </button>
+            </form>
+          </div>
         </section>
 
         {/* Right Column: Shift Passes & Booking */}
@@ -521,6 +671,139 @@ export default function EventDetail() {
                   </Link>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Volunteer Shift Swap Board (Visible to volunteers) */}
+          {user?.role === 'volunteer' && (
+            <div
+              className="dash-card"
+              style={{
+                background: '#ffffff',
+                borderRadius: '20px',
+                padding: '1.4rem',
+                border: '2.5px solid #0f172a',
+                boxShadow: '4px 4px 0px #0f172a',
+                marginBottom: '1rem',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.65rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '1.35rem' }}>🔄</span>
+                  <h3 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 950, color: '#0f172a' }}>
+                    Shift Swap Board
+                  </h3>
+                </div>
+                <span
+                  style={{
+                    fontSize: '0.74rem',
+                    fontWeight: 850,
+                    padding: '2px 9px',
+                    borderRadius: '999px',
+                    background: '#e0e7ff',
+                    color: '#3730a3',
+                    border: '1.2px solid #0f172a',
+                  }}
+                >
+                  {swapData.length} Open {swapData.length === 1 ? 'Offer' : 'Offers'}
+                </span>
+              </div>
+
+              <p style={{ margin: '0 0 1rem', fontSize: '0.84rem', color: '#475569', fontWeight: 650 }}>
+                Shifts offered by crew members who need a handover without late-cancel penalties. Claim an open shift to take their spot!
+              </p>
+
+              {swapData.length === 0 ? (
+                <div style={{ background: '#f8fafc', border: '1.5px dashed #cbd5e1', borderRadius: '12px', padding: '1rem', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.84rem', color: '#64748b', fontWeight: 650 }}>
+                    No shifts currently on the swap board. If you cannot attend your confirmed shift, you can offer it for swap from your <Link to="/my-shifts" style={{ color: '#4338ca', fontWeight: 800, textDecoration: 'underline' }}>My Shifts</Link> page!
+                  </span>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {swapData.map((sw) => {
+                    const shift = sw.shiftId || {};
+                    return (
+                      <div
+                        key={sw._id}
+                        style={{
+                          background: '#f8fafc',
+                          border: '2px solid #0f172a',
+                          borderRadius: '12px',
+                          padding: '0.9rem 1.1rem',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '0.5rem',
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
+                          <div>
+                            <div style={{ fontWeight: 900, color: '#0f172a', fontSize: '0.95rem' }}>
+                              🎯 {shift.role?.name || 'Volunteer Duty'}
+                            </div>
+                            <div style={{ fontSize: '0.82rem', color: '#475569', fontWeight: 700, marginTop: '2px' }}>
+                              ⏰ {formatShift(shift.start, shift.end)}
+                            </div>
+                          </div>
+
+                          <div style={{ textAlign: 'right' }}>
+                            <span style={{ fontSize: '0.84rem', fontWeight: 900, color: '#166534', background: '#dcfce7', padding: '2px 8px', borderRadius: '6px', border: '1px solid #16a34a' }}>
+                              {payLabel(shift)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Offered by & note */}
+                        <div style={{ fontSize: '0.8rem', color: '#334155', fontWeight: 650 }}>
+                          Offered by: <strong>{sw.fromUser?.name || 'Volunteer'}</strong> (⭐ {sw.fromUser?.reliabilityScore ?? 100} Rel)
+                          {sw.note && (
+                            <div style={{ fontStyle: 'italic', color: '#475569', marginTop: '2px' }}>
+                              "{sw.note}"
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Claim action */}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginTop: '0.25rem' }}>
+                          {sw.isOfferer ? (
+                            <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#4338ca', background: '#e0e7ff', padding: '3px 8px', borderRadius: '6px' }}>
+                              Your Swap Offer
+                            </span>
+                          ) : sw.isEligible ? (
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              onClick={() => {
+                                if (window.confirm('Claim this shift? If organizer approval is enabled, your spot will be locked once reviewed.')) {
+                                  claimSwap.mutate(sw._id);
+                                }
+                              }}
+                              disabled={claimSwap.isPending}
+                              style={{ padding: '0.35rem 0.85rem', fontSize: '0.78rem', fontWeight: 900 }}
+                            >
+                              {claimSwap.isPending ? 'Claiming...' : 'Claim Shift 🤝'}
+                            </button>
+                          ) : (
+                            <span
+                              style={{
+                                fontSize: '0.74rem',
+                                fontWeight: 800,
+                                color: '#991b1b',
+                                background: '#fee2e2',
+                                padding: '3px 8px',
+                                borderRadius: '6px',
+                                border: '1px solid #f87171',
+                              }}
+                            >
+                              ⚠️ {sw.ineligibilityReason || 'Ineligible'}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
