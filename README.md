@@ -1,3 +1,7 @@
+# video link 
+https://www.loom.com/share/bfa86ca28c7c4884b7c7a2a5b2ee1c58
+
+
 # ShiftCrew
 
 Paid volunteer and shift management for fests, NGOs and hackathons. Organizers plan events, roles and shifts. Volunteers join shifts without double-booking, check in with a QR pass, and get a stipend for the hours they actually worked. Everything is tracked in an audit log and an append-only wallet ledger.
