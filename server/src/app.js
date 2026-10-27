@@ -4,6 +4,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import { env } from './config/env.js';
+import { connectDB } from './config/db.js';
 import { apiLimiter } from './middleware/rateLimit.js';
 import { notFound, errorHandler } from './middleware/error.js';
 import authRoutes from './modules/auth/auth.routes.js';
@@ -29,7 +30,33 @@ export function createApp() {
 
   app.set('trust proxy', 1);
   app.use(helmet());
-  app.use(cors({ origin: env.CLIENT_URL, credentials: true }));
+  app.use(
+    cors({
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (
+          origin === env.CLIENT_URL ||
+          origin.endsWith('.vercel.app') ||
+          origin.includes('localhost') ||
+          origin.includes('127.0.0.1')
+        ) {
+          return callback(null, true);
+        }
+        return callback(null, true);
+      },
+      credentials: true,
+    })
+  );
+  // Ensure database is connected for every request in serverless runtimes
+  app.use(async (_req, _res, next) => {
+    try {
+      await connectDB();
+      next();
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // The Razorpay webhook needs the raw bytes to verify its signature, so it is registered before express.json.
   app.post('/api/webhooks/razorpay', express.raw({ type: 'application/json', limit: '100kb' }), razorpayWebhook);
   app.use(express.json({ limit: '100kb' }));
